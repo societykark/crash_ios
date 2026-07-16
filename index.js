@@ -1,13 +1,22 @@
 const { makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, generateWAMessageFromContent } = require("@whiskeysockets/baileys");
 const P = require("pino");
 const fs = require("fs");
-const QRCode = require("qrcode-terminal");
 
-// ========== LEE EL NÚMERO (opcional, solo para pairing) ==========
-// Si usas QR, no es necesario, pero lo dejamos por si acaso
+// ===== QR CODE (con fallback si no está instalado) =====
+let QRCode;
+try {
+    QRCode = require("qrcode-terminal");
+} catch (e) {
+    QRCode = null;
+    console.log("⚠️ qrcode-terminal no instalado. El QR se mostrará como texto.");
+}
+
+// ========== LEE EL NÚMERO (solo para pairing, opcional) ==========
 const PHONE_NUMBER = process.env.PHONE_NUMBER || "";
 
 async function start() {
+    console.log("🔄 Iniciando bot...");
+    
     const { state, saveCreds } = await useMultiFileAuthState("auth");
     const { version } = await fetchLatestBaileysVersion();
 
@@ -24,10 +33,15 @@ async function start() {
     sock.ev.on("connection.update", async (update) => {
         const { connection, lastDisconnect, qr } = update;
 
-        // ✅ Mostrar QR en la consola (por si no se imprime automáticamente)
+        // ✅ Mostrar QR en la consola (con dibujo si está disponible)
         if (qr) {
             console.log("\n📲 ESCANEA ESTE QR CON WHATSAPP (Dispositivos vinculados > Vincular con código QR)\n");
-            QRCode.generate(qr, { small: true });
+            if (QRCode) {
+                QRCode.generate(qr, { small: true });
+            } else {
+                console.log(qr); // Fallback: muestra el texto plano
+                console.log("\n🔗 Copia ese texto y pégale en un generador de QR online (ej. qr-code-generator.com)");
+            }
         }
 
         if (connection === "open") {
